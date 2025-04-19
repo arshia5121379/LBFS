@@ -67,7 +67,7 @@ end module
        integer::i,j
 
        dt = 0.1d0
-       tmax = 30000
+       tmax = 150000
        call gridgen
        call fluxMesh
        call initialize
@@ -126,7 +126,7 @@ end module
 
         miu_ratio = 1.0  ! the viscosity ratio
         dd_ratio  = 10.0  ! density ratio
-        ddH  = 1.d0
+        ddH  = 10.d0
         ddL  = ddH/dd_ratio
         niuH = abs(gy)**0.5*L**1.5/Re
         miuH = niuH*ddH
@@ -298,7 +298,7 @@ end module
               end do
           end do
 
-          if(mod(iter,10) .eq. 0) then
+          if(mod(iter,100) .eq. 0) then
             res0 = 0.d0
             res1 = 0.d0
             do j = 1,jmax-1
@@ -310,7 +310,7 @@ end module
             res1 = res0/res1
             write(*,*) 'the iteration:: ', iter , 'the residual:: ',res1
             write(*,*) '==================================================================='
-            !call output_time
+            call output_time
           end if
         end do
 
@@ -1602,10 +1602,10 @@ end module
       ! left B-C
       i = 0
       do j = 1,jmax-1
-          ini(i,j,1) = ini(imax,j,1)
-          ini(i,j,2) = ini(imax,j,2)
-          ini(i,j,3) = ini(imax,j,3)
-          ini(i,j,4) = ini(imax,j,4)
+          ini(i,j,1) = ini(i+1,j,1)
+          ini(i,j,2) = ini(i+1,j,2)
+          ini(i,j,3) = 0.0!ini(i+1,j,3)
+          ini(i,j,4) = -ini(i+1,j,4)
           dd = ddL*(1.d0-ini(i,j,1))+ini(i,j,1)*ddH
           ini(i,j,5) = dd
       end do
@@ -1613,10 +1613,10 @@ end module
       ! right B-C
       i = imax
       do j = 1,jmax-1
-          ini(i,j,1) = ini(0,j,1)
-          ini(i,j,2) = ini(0,j,2)
-          ini(i,j,3) = ini(0,j,3)
-          ini(i,j,4) = ini(0,j,4)
+          ini(i,j,1) = ini(i-1,j,1)
+          ini(i,j,2) = ini(i-1,j,2)
+          ini(i,j,3) = 0.0!ini(i-1,j,3)
+          ini(i,j,4) = -ini(i-1,j,4)
           dd = ddL*(1.d0-ini(i,j,1))+ini(i,j,1)*ddH
           ini(i,j,5) = dd
       end do
@@ -1627,7 +1627,7 @@ end module
           ini(i,j,1) = ini(i,j+1,1)
           ini(i,j,2) = ini(i,j+1,2)
           ini(i,j,3) = -ini(i,j+1,3)
-          ini(i,j,4) = 0.d0
+          ini(i,j,4) = 0.0!ini(i,j+1,3)
           dd = ddL*(1.d0-ini(i,j,1))+ini(i,j,1)*ddH
           ini(i,j,5) = dd
       end do
@@ -1638,7 +1638,7 @@ end module
           ini(i,j,1) = ini(i,j-1,1)
           ini(i,j,2) = ini(i,j-1,2)
           ini(i,j,3) = -ini(i,j-1,3)
-          ini(i,j,4) = 0.d0
+          ini(i,j,4) = 0.0!ini(i,j-1,3)
           dd = ddL*(1.d0-ini(i,j,1))+ini(i,j,1)*ddH
           ini(i,j,5) = dd
       end do
