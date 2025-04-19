@@ -46,7 +46,7 @@ module head
     real(8)::  Us(ntmax),Ys(ntmax),Ts(ntmax),dxx,dyy
     real(8)::  Fax(-1:ntmax,-1:ntmax),Fay(-1:ntmax,-1:ntmax)
     integer::  FluidType,flag_time
-    real(8)::  D0,time,start_time,end_time,L,W,NormVecX(-1:ntmax,-1:ntmax),NormVecY(-1:ntmax,-1:ntmax)
+    real(8)::  D0,time,start_time,end_time,L,W
     real(8)::  Diameter, H_LU, L_LU, H_phy, L_phy, Hf, Lf, t_phy, t_Lu, V_Lu, V_phy
 
 end module
@@ -125,10 +125,10 @@ end module
 
         t_Lu = V_LU * Lf * 1e-3 / V_phy ! time factor
 
-        datatime = 10000
-        tmax = 500001
+        datatime = 1
+        tmax = 80000
         FluidType = 1
-        flag_time = 1
+        flag_time = 0
 
     end subroutine
 
@@ -164,7 +164,6 @@ end module
         Re = 100.d0
         We = 0.27d0
         Ca = We/Re !=> in order of magnitude of 1*10e-3
-        ! consider V_ref in physical space = 0.1m/s
         Bo = 3.0
         U0 = 0.002d0
         ddH= 10.d0
@@ -172,7 +171,6 @@ end module
         etha= 10.d0
         rr=50.0d0*dtt  ! radius of the drop
         dia=rr*2.0
-        T_dim = dia/U0
         Cs = 1.d0/sqrt(3.d0)
         pi = 4.0*atan(1.0)
         epsilon = 3.d0*dtt  ! interface thickness
@@ -201,7 +199,7 @@ end module
         ! to find alpha :                                                                         |
         !                                                                                         |
         ! alpha1 = sqrt (1 - Vl/Vw) => Vl sound speed in liquid and Vw is a property of substrace |
-        ! Vw varies with frequency                                                                |
+        ! Vw varies with frequency
         ! =========================================================================================
 
         Vel_L = 1497 * t_Lu / (Lf*1.0e-3)
@@ -209,7 +207,7 @@ end module
         !alpha1 = 2.47d0
         alpha1 = sqrt (1- (Vel_L/Vel_W)**2)
         ThetaR = 23.d0
-        A      = 1.0e-9/(Lf*1e-3)
+        A      = 1.e-9/(Lf*1e-3)
         omega  = 2.0*pi*20e6*t_Lu
         Ki     = -1340.d0 * Lf * 1e-3
 
@@ -359,6 +357,11 @@ end module
           wwt(1:imax-1,1:jmax-1,3) = ww0(1:imax-1,1:jmax-1,3) ! rho*Cs^2*u
           wwt(1:imax-1,1:jmax-1,4) = ww0(1:imax-1,1:jmax-1,4) ! rho*Cs^2*v
 
+          if (FluidType == 2) then
+            niuN_HXOLD = niuN_HX
+            niuN_HYOLD = niuN_HY
+          end if
+
           call BC
           call Force
 
@@ -366,12 +369,6 @@ end module
           rho_faceyO = rho_facey
 
           call fluxff ! calculate flux at new step
-
-          if (FluidType == 2) then
-            niuN_HXOLD = niuN_HX
-            niuN_HYOLD = niuN_HY
-          end if
-
 
           res0 = 0.d0
           res1 = 0.d0
@@ -1739,7 +1736,9 @@ end module
       implicit none
 
       integer:: i,j,in,ip,jp,jn
-      real(8):: dd,phi,pp,miu
+      real(8):: dd,phi,pp,miu,thetaD
+      real(8):: Vcl(-1:ntmax)
+
 
       ! ini(1)=>phi , ini(2)=>p , ini(3)=>u , ini(4)=>v ,ini(5)=>rho, ini(6)=>miu
       do j = 1,jmax-1
@@ -1781,8 +1780,14 @@ end module
       ! calculating dynamic contact angle modeling :
       ! first finding gradient of order parameter d(phi)/dx and dy :
 
+      call V_surface(Vcl)
 
-      ini(1:imax-1,0,1) = (4.d0/epsilon*cos(thetaC*pi/180)*ini(1:imax-1,1,1)*(1.d0-ini(1:imax-1,1,1)))*(leny(1))+ini(1:imax-1,1,1)
+      do i=1,imax-1
+        call Dynamic_CA(Vcl(i),thetaD)
+        ini(i,0,1) = (4.d0/epsilon*cos(thetaD*pi/180)*ini(i,1,1)*(1.d0-ini(i,1,1)))*(leny(1))+ini(i,1,1)
+      end do
+
+      !ini(1:imax-1,0,1) = (4.d0/epsilon*cos(thetaC*pi/180)*ini(1:imax-1,1,1)*(1.d0-ini(1:imax-1,1,1)))*(leny(1))+ini(1:imax-1,1,1)
       ini(1:imax-1,0,2) = ini(1:imax-1,1,2)
       ini(1:imax-1,0,3) = -ini(1:imax-1,1,3)
       ini(1:imax-1,0,4) = 0.d0
@@ -1831,29 +1836,66 @@ end module
 
     end subroutine BC
 
-    subroutine V_surface(u,v,VclX,VclY)
+    subroutine V_surface(Vcl)
         USE head
         USE rho_0
         implicit none
-        real(8),intent(out):: VclX(-1:ntmax,-1:ntmax),VclY(-1:ntmax,-1:ntmax)
-        real(8),intent(in) :: u,v
+        real(8),intent(out):: Vcl(-1:ntmax)
+        real(8):: VclX(-1:ntmax),VclY(-1:ntmax)
+        real(8):: NormVecX(-1:ntmax),NormVecY(-1:ntmax)
         real(8):: dphidx,dphidy,mag
 
         ! Vcl = n * u_cell * n
         ! Vcl = u - (u . n)n => (a*b)*c = b(a . c) - a(b . c)
+        ! calculation on J=1 cells
 
-        do i=0,imax
-            do j=0,jmax
-                dphidx = limx(i,j,1)
-                dphidy = limy(i,j,1)
-                mag    = sqrt(dphidx**2+dphidy**2)
-                NormVecX(i,j) = dphidx/mag
-                NormVecY(i,j) = dphidy/mag
-                VclX(i,j)     = u - (u*NormVecX(i,j)-v*NormVecY(i,j))*NormVecX(i,j)
-                VclY(i,j)     = v - (u*NormVecX(i,j)-v*NormVecY(i,j))*NormVecY(i,j)
-            end do
+        do i=1,imax-1
+            dphidx = limx(i,1,1)
+            dphidy = limy(i,1,1)
+            mag    = sqrt(dphidx**2+dphidy**2)
+            NormVecX(i) = 0.0
+            NormVecY(i) = 0.0
+            VclX(i)     = ini(i,1,3) - (ini(i,1,3)*NormVecX(i)-ini(i,1,4)*NormVecY(i))*NormVecX(i)
+            VclY(i)     = ini(i,1,4) - (ini(i,1,3)*NormVecX(i)-ini(i,1,4)*NormVecY(i))*NormVecY(i)
+            Vcl(i)      = VclX(i)!sqrt(VclX(i)**2 + VclY(i)**2)
         end do
 
     end subroutine
 
+    subroutine Dynamic_CA(Vcl,thetaD)
+        USE head
+        USE rho_0
+
+        implicit none
+        real(8),intent(in):: Vcl
+        real(8),intent(out):: thetaD
+        integer:: func
+        real   :: Ca_cl, kr, ka, theta_ad, theta_re
+
+        kr = 9e-8
+        ka = 9e-9
+
+        thetaC = 90.0
+        theta_ad = 114.0
+        theta_re = 93.0
+
+        func = 2 ! 1: Quasi-dynamic 2: Yokoi
+
+        select case(func)
+            case (1)
+                if(Vcl < 0) then
+                    thetaD = theta_re  ! theta re
+                else
+                    thetaD = theta_ad ! theta ad
+                end if
+            case (2)
+                Ca_cl = miuH*Vcl/sigma
+                if (Vcl <0) then
+                    thetaD = max(thetaC + (Ca_cl/kr)**(1./3.) , theta_re)
+                else
+                    thetaD = min(thetaC + (Ca_cl/ka)**(1./3.) , theta_ad)
+                end if
+        end select
+
+    end subroutine
 

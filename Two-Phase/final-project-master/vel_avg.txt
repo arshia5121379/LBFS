@@ -1,0 +1,6 @@
+ max Xvelocity :    42919.889904406009      mm/s
+ min Xvelocity :   -37224.868601157788      mm/s
+ max Yvelocity :    10061.821759550836      mm/s
+ min Yvelocity :   -56824.839986148494      mm/s
+ abs velocity  :    44083.525341416418      mm/s
+ iteration :       170000 time :    1.3600001089274899E-002
